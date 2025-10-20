@@ -9,13 +9,15 @@ const DATASET_DEFINITIONS = Object.freeze({
     id: 'ambulatorial',
     sheetName: 'BASE-DE-DADOS',
     displayName: 'Ambulatorial',
-    themeSheetName: 'tema'
+    themeSheetName: 'tema',
+    columnCount: 51
   },
   cirurgico: {
     id: 'cirurgico',
     sheetName: 'BASE-DE-DADOS-2',
     displayName: 'Cirúrgico',
-    themeSheetName: 'tema2'
+    themeSheetName: 'tema2',
+    columnCount: 34
   }
 });
 
@@ -88,13 +90,26 @@ function getDatasetTemaSheet(spreadsheet, datasetId) {
 }
 
 function resolveDatasetIdFromFilters(filters) {
+  let resolved = DEFAULT_DATASET_ID;
+
   if (filters && typeof filters === 'object') {
     const candidate = filters.dataset || filters.dataSet || filters.bi;
     if (candidate) {
-      return candidate;
+      resolved = candidate;
     }
   }
-  return DEFAULT_DATASET_ID;
+
+  const normalized = normalizeDatasetId(resolved);
+  try {
+    console.log('[Dataset] resolveDatasetIdFromFilters', {
+      filters: filters || {},
+      resolved: normalized
+    });
+  } catch (error) {
+    Logger.log('[Dataset] resolveDatasetIdFromFilters erro ao registrar log: %s', error);
+  }
+
+  return normalized;
 }
 
 function getBaseDataMetaKey(datasetId) {
@@ -185,7 +200,7 @@ function normalizeBooleanFlag(value) {
   return false;
 }
 
-function mapRowToRecord(row) {
+function mapAmbulatorialRowToRecord(row) {
   const safeRow = Array.isArray(row) ? row : [];
 
   return {
@@ -208,22 +223,175 @@ function mapRowToRecord(row) {
   };
 }
 
+const CIRURGICO_FIELD_MAP = Object.freeze([
+  { index: 0, keys: ['ANO'], transform: sanitizeStringValue },
+  { index: 1, keys: ['MÊS', 'MES'], transform: sanitizeStringValue },
+  { index: 2, keys: ['DATA DA SOLICITAÇÃO', 'DATA_DA_SOLICITACAO'], transform: value => value || '' },
+  { index: 3, keys: ['PRONTUÁRIO', 'PRONTUARIO', 'PRONT'], transform: sanitizeStringValue },
+  { index: 4, keys: ['NOME', 'PACIENTE'], transform: sanitizeStringValue },
+  { index: 5, keys: ['GÊNERO', 'GENERO'], transform: sanitizeStringValue },
+  { index: 6, keys: ['DATA DE NASCIMENTO', 'DATA_DE_NASCIMENTO'], transform: value => value || '' },
+  { index: 7, keys: ['IDADE'], transform: value => (value === undefined || value === null ? '' : value) },
+  { index: 8, keys: ['MUNICÍPIO', 'MUNICIPIO'], transform: sanitizeStringValue },
+  { index: 9, keys: ['ESPECIALIDADE'], transform: sanitizeStringValue },
+  { index: 10, keys: ['PROCEDIMENTO INDICADO', 'PROCEDIMENTO', 'PROCEDIMENTO_INDICADO'], transform: sanitizeStringValue },
+  { index: 11, keys: ['CIRURGIÃO', 'CIRURGIAO'], transform: sanitizeStringValue },
+  {
+    index: 12,
+    keys: [
+      'CONFIRMAÇÃO DA INTERNAÇÃO',
+      'CONFIRMAÇÃO_DA_INTERNAÇÃO',
+      'CONFIRMACAO_DA_INTERNAÇÃO',
+      'CONFIRMACAO_DA_INTERNACAO'
+    ],
+    transform: sanitizeStringValue
+  },
+  { index: 13, keys: ['DATA DE INTERNAÇÃO', 'DATA_DA_INTERNAÇÃO', 'DATA_DA_INTERNACAO'], transform: value => value || '' },
+  { index: 14, keys: ['DATA DA CIRURGIA', 'DATA_DA_CIRURGIA'], transform: value => value || '' },
+  { index: 15, keys: ['PROGRAMA'], transform: sanitizeStringValue },
+  { index: 16, keys: ['STATUS DO AGENDAMENTO', 'STATUS_DO_AGENDAMENTO'], transform: sanitizeStringValue },
+  { index: 17, keys: ['PENDÊNCIA 01', 'PENDENCIA_01'], transform: sanitizeStringValue },
+  { index: 18, keys: ['PENDÊNCIA 02', 'PENDENCIA_02'], transform: sanitizeStringValue },
+  { index: 19, keys: ['PENDÊNCIA 03', 'PENDENCIA_03'], transform: sanitizeStringValue },
+  { index: 20, keys: ['SOLICITAÇÃO VAGA NA UTI?', 'SOLICITACAO_VAGA_NA_UTI'], transform: sanitizeStringValue },
+  {
+    index: 21,
+    keys: ['COMORBIDADE? MEDICAMENTOS DE ROTINA ?', 'COMORBIDADE_MEDICAMENTOS'],
+    transform: sanitizeStringValue
+  },
+  { index: 22, keys: ['VAD (VIAS AÉREAS DIFÍCEIS)', 'VAD'], transform: sanitizeStringValue },
+  { index: 23, keys: ['CONGELAÇÃO', 'CONGELACAO'], transform: sanitizeStringValue },
+  {
+    index: 24,
+    keys: ['TEMPO DE ESPERA PARA AGENDAMENTO CIRURGICO', 'TEMPO_DE_ESPERA'],
+    transform: value => (value === undefined || value === null ? '' : value)
+  },
+  {
+    index: 25,
+    keys: ['HISTOPATOLOGICO COMPROVANDO NEOPLASIA', 'HISTOPATOLOGICO'],
+    transform: sanitizeStringValue
+  },
+  { index: 26, keys: ['N° FASTMEDIC', 'N_FASTMEDIC'], transform: sanitizeStringValue },
+  {
+    index: 27,
+    keys: ['classificação em fila DA ORTOPEDIA', 'CLASSIFICACAO_FILA_ORTOPEDIA'],
+    transform: sanitizeStringValue
+  },
+  {
+    index: 28,
+    keys: ['SITUAÇÃO \nFASTMEDIC', 'SITUAÇÃO \u000AFASTMEDIC', 'SITUAÇÃO FASTMEDIC', 'SITUAÇÃO_FASTMEDIC', 'SITUACAO_FASTMEDIC'],
+    transform: sanitizeStringValue
+  },
+  {
+    index: 29,
+    keys: ['SITUAÇÃO DO FORMULARIO DE AUTORIZAÇÃO DO MES', 'SITUACAO_FORM_AUTORIZACAO'],
+    transform: sanitizeStringValue
+  },
+  { index: 30, keys: ['OBSERVAÇÃO 01', 'OBSERVACAO_01'], transform: sanitizeStringValue },
+  { index: 31, keys: ['OBSERVAÇÃO 02', 'OBSERVACAO_02'], transform: sanitizeStringValue },
+  { index: 32, keys: ['OBSERVAÇÃO 03', 'OBSERVACAO_03'], transform: sanitizeStringValue },
+  { index: 33, keys: ['OBSERVAÇÃO 04', 'OBSERVACAO_04'], transform: sanitizeStringValue }
+]);
+
+function mapCirurgicoRowToRecord(row) {
+  const safeRow = Array.isArray(row) ? row : [];
+  const record = {};
+
+  CIRURGICO_FIELD_MAP.forEach(field => {
+    const transform = typeof field.transform === 'function' ? field.transform : sanitizeStringValue;
+    const rawValue = safeRow[field.index];
+    const value = transform(rawValue);
+
+    field.keys.forEach(key => {
+      if (!key) {
+        return;
+      }
+      record[key] = value;
+    });
+  });
+
+  return record;
+}
+
+function mapRowToRecord(row) {
+  return mapAmbulatorialRowToRecord(row);
+}
+
+function mapDatasetRowToRecord(datasetId, row) {
+  const normalized = normalizeDatasetId(datasetId);
+  if (normalized === 'cirurgico') {
+    return mapCirurgicoRowToRecord(row);
+  }
+  return mapAmbulatorialRowToRecord(row);
+}
+
+function getDatasetColumnCount(datasetId, sheet) {
+  const normalized = normalizeDatasetId(datasetId);
+  const definition = CONFIG.datasets[normalized] || DATASET_DEFINITIONS[normalized];
+
+  if (definition && Number.isInteger(definition.columnCount) && definition.columnCount > 0) {
+    return definition.columnCount;
+  }
+
+  if (sheet && typeof sheet.getLastColumn === 'function') {
+    return sheet.getLastColumn();
+  }
+
+  return 30;
+}
+
 function coerceRowToRecord(row) {
   if (!row) {
-    return mapRowToRecord([]);
+    return mapAmbulatorialRowToRecord([]);
   }
 
   if (Array.isArray(row)) {
-    return mapRowToRecord(row);
+    return mapAmbulatorialRowToRecord(row);
   }
 
   if (typeof row === 'object') {
     if (row.prontuario !== undefined || row.situacao !== undefined) {
       return row;
     }
+
+    const prontuario = sanitizeStringValue(row.prontuario
+      || row.PRONTUARIO
+      || row['PRONTUÁRIO']
+      || row.PRONT);
+    const paciente = sanitizeStringValue(row.paciente || row.NOME);
+    const profissional = sanitizeStringValue(row.profissional || row.CIRURGIAO || row['CIRURGIÃO']);
+    const tipo = sanitizeStringValue(row.tipo || row['PROCEDIMENTO INDICADO'] || row.PROCEDIMENTO_INDICADO);
+    const especialidade = sanitizeStringValue(row.especialidade || row.ESPECIALIDADE);
+    const situacao = sanitizeStringValue(row.situacao
+      || row.SITUACAO
+      || row['SITUAÇÃO_FASTMEDIC']
+      || row['SITUACAO_FASTMEDIC']);
+    const ano = sanitizeStringValue(row.ano || row.ANO);
+    const mes = sanitizeStringValue(row.mes || row.MES || row['MÊS']);
+    const dataReferencia = row.dataReferencia || row['DATA DA CIRURGIA'] || row.DATA_DA_CIRURGIA || '';
+    const quimioterapia = normalizeBooleanFlag(row.quimioterapia);
+    const cirurgia = normalizeBooleanFlag(row.cirurgia || !!row['DATA DA CIRURGIA'] || !!row.DATA_DA_CIRURGIA);
+    const turno = sanitizeStringValue(row.turno || '');
+
+    if (prontuario || paciente || profissional || tipo || especialidade || situacao || ano || mes || dataReferencia) {
+      return {
+        prontuario,
+        paciente,
+        profissional,
+        tipo,
+        especialidade,
+        situacao,
+        ano,
+        mes,
+        dataReferencia,
+        quimioterapia,
+        cirurgia,
+        turno
+      };
+    }
   }
 
-  return mapRowToRecord([]);
+  return mapAmbulatorialRowToRecord([]);
 }
 
 function sanitizeFilters(filters) {
@@ -624,9 +792,10 @@ function getCachedBaseData(spreadsheet, sheet, datasetId) {
     return [];
   }
 
-  const dataRange = targetSheet.getRange(2, 1, lastRow - 1, 30);
+  const columnCount = getDatasetColumnCount(normalizedDataset, targetSheet);
+  const dataRange = targetSheet.getRange(2, 1, lastRow - 1, columnCount);
   const data = dataRange.getValues();
-  const records = data.map(mapRowToRecord);
+  const records = data.map(row => mapDatasetRowToRecord(normalizedDataset, row));
 
   storeBaseDataInCache(cache, records, normalizedDataset);
 
@@ -787,7 +956,8 @@ function getDashboardDataPaginated(filters = {}, page = 1) {
 
   try {
     const sanitizedFilters = sanitizeFilters(filters || {});
-    const datasetId = normalizeDatasetId(resolveDatasetIdFromFilters(sanitizedFilters));
+    const datasetId = resolveDatasetIdFromFilters(sanitizedFilters);
+    console.log('[Dashboard] Dataset selecionado (paginação):', datasetId);
     const filtersForProcessing = cloneFilterObject(sanitizedFilters);
     delete filtersForProcessing.dataset;
     const safePage = Math.max(1, Number(page) || 1);
@@ -894,7 +1064,9 @@ function calculateKPIsFromRecords(records) {
 }
 
 function calculateKPIsWithFormulas(spreadsheet, filters = {}, baseData, preFilteredData, datasetId = DEFAULT_DATASET_ID) {
-  const normalizedDataset = normalizeDatasetId(datasetId || resolveDatasetIdFromFilters(filters));
+  const resolvedDataset = datasetId ? normalizeDatasetId(datasetId) : resolveDatasetIdFromFilters(filters);
+  const normalizedDataset = resolvedDataset;
+  console.log('[Dashboard] Dataset selecionado (KPIs):', normalizedDataset);
 
   try {
     const sanitizedFilters = sanitizeFilters(filters || {});
@@ -980,7 +1152,8 @@ function applyFiltersToData(data, filters, filtersAreSanitized) {
 function getChartDataOptimized(filters = {}) {
   try {
     const sanitizedFilters = sanitizeFilters(filters || {});
-    const datasetId = normalizeDatasetId(resolveDatasetIdFromFilters(sanitizedFilters));
+    const datasetId = resolveDatasetIdFromFilters(sanitizedFilters);
+    console.log('[Dashboard] Dataset selecionado (gráficos):', datasetId);
     const filtersForProcessing = cloneFilterObject(sanitizedFilters);
     delete filtersForProcessing.dataset;
     const cache = CacheService.getScriptCache();
@@ -1519,7 +1692,8 @@ function updateAtendimentoSituacao(prontuario, novaSituacao) {
 function exportToCSV(filters = {}) {
   try {
     const spreadsheet = SpreadsheetApp.openById(CONFIG.spreadsheetId);
-    const datasetId = normalizeDatasetId(resolveDatasetIdFromFilters(filters));
+    const datasetId = resolveDatasetIdFromFilters(filters);
+    console.log('[Dashboard] Dataset selecionado (exportação CSV):', datasetId);
     const databaseSheet = getDatasetSheet(spreadsheet, datasetId);
     if (!databaseSheet) {
       return {
@@ -1853,6 +2027,8 @@ function getCirurgicoBaseData() {
           record[header] = row[index];
         }
       });
+      Object.assign(record, mapCirurgicoRowToRecord(row));
+      enrichCirurgicoRecord(record);
       return record;
     });
 
@@ -1892,6 +2068,30 @@ function normalizeHeaderKey(value) {
     .replace(/[^A-Z0-9_]/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '');
+}
+
+function enrichCirurgicoRecord(record) {
+  if (!record || typeof record !== 'object') {
+    return record;
+  }
+
+  Object.keys(record).forEach(key => {
+    if (!key) {
+      return;
+    }
+
+    const underscoredKey = key.replace(/\s+/g, '_');
+    if (underscoredKey && underscoredKey !== key && record[underscoredKey] === undefined) {
+      record[underscoredKey] = record[key];
+    }
+
+    const normalizedKey = normalizeHeaderKey(key);
+    if (normalizedKey && record[normalizedKey] === undefined) {
+      record[normalizedKey] = record[key];
+    }
+  });
+
+  return record;
 }
 
 function getCirurgicoField(record, keys) {

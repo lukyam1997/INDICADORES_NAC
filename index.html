@@ -1716,6 +1716,12 @@
     padding: 26px 30px;
     margin-bottom: 30px;
     box-shadow: var(--shadow-md);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+#cirurgicoDashboard .filters-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 20px;
@@ -1775,6 +1781,142 @@
     font-size: 0.75rem;
     color: var(--text-muted);
     line-height: 1.4;
+}
+
+#cirurgicoDashboard .quick-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+#cirurgicoDashboard .quick-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: var(--border-radius-lg);
+    border: 1px solid rgba(79, 214, 155, 0.35);
+    background: rgba(79, 214, 155, 0.12);
+    color: var(--text-body);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    box-shadow: var(--shadow-sm);
+}
+
+#cirurgicoDashboard .quick-nav-btn i {
+    color: var(--primary);
+}
+
+#cirurgicoDashboard .quick-nav-btn:hover,
+#cirurgicoDashboard .quick-nav-btn:focus {
+    outline: none;
+    border-color: var(--primary);
+    background: rgba(79, 214, 155, 0.22);
+    box-shadow: 0 10px 20px rgba(79, 214, 155, 0.18);
+}
+
+#cirurgicoDashboard .quick-nav-btn:focus-visible {
+    box-shadow: var(--focus-ring);
+}
+
+#cirurgicoDashboard .quick-nav-btn.is-active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary-dark);
+}
+
+#cirurgicoDashboard .active-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+#cirurgicoDashboard .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(79, 214, 155, 0.45);
+    background: rgba(79, 214, 155, 0.14);
+    color: var(--text-body);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    box-shadow: var(--shadow-sm);
+}
+
+#cirurgicoDashboard .filter-chip i {
+    font-size: 0.8rem;
+    color: var(--primary);
+}
+
+#cirurgicoDashboard .filter-chip:hover,
+#cirurgicoDashboard .filter-chip:focus {
+    background: rgba(79, 214, 155, 0.28);
+    border-color: var(--primary);
+}
+
+#cirurgicoDashboard .filter-chip:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+}
+
+#cirurgicoDashboard .filter-chip.is-empty {
+    background: rgba(148, 163, 184, 0.18);
+    border-color: rgba(148, 163, 184, 0.35);
+    color: var(--text-muted);
+    cursor: default;
+    box-shadow: none;
+}
+
+#cirurgicoDashboard .filter-chip.is-empty:hover {
+    border-color: rgba(148, 163, 184, 0.35);
+}
+
+#cirurgicoDashboard .filter-chip[data-action="clear-all"] {
+    background: rgba(255, 122, 74, 0.16);
+    border-color: rgba(255, 122, 74, 0.35);
+    color: var(--accent-dark);
+}
+
+#cirurgicoDashboard .filter-chip[data-action="clear-all"] i {
+    color: var(--accent);
+}
+
+#cirurgicoDashboard .filter-chip[data-action="clear-all"]:hover {
+    background: rgba(255, 122, 74, 0.28);
+}
+
+#cirurgicoDashboard .skeleton-block {
+    position: relative;
+    overflow: hidden;
+}
+
+#cirurgicoDashboard[data-loading="true"] .skeleton-block {
+    color: transparent !important;
+}
+
+#cirurgicoDashboard[data-loading="true"] .skeleton-block::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(231, 237, 242, 0.05) 0%, rgba(231, 237, 242, 0.8) 50%, rgba(231, 237, 242, 0.05) 100%);
+    animation: skeleton-shimmer 1.4s infinite;
+}
+
+#cirurgicoDashboard[data-loading="true"] .chart-wrapper canvas {
+    opacity: 0;
+}
+
+@keyframes skeleton-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
 }
 
 #cirurgicoDashboard .kpi-section {
@@ -2474,7 +2616,7 @@
         </footer>
                 </div>
 
-                <div id="cirurgicoDashboard" class="dashboard-view dashboard-view--cirurgico" data-view="cirurgico" aria-hidden="true">
+                <div id="cirurgicoDashboard" class="dashboard-view dashboard-view--cirurgico" data-view="cirurgico" data-loading="false" aria-hidden="true">
                     <header class="dashboard-header">
                         <div class="header-content">
                             <div class="header-title">
@@ -2512,46 +2654,58 @@
                         </div>
                     </section>
 
-                    <section class="filters-section">
-                        <div class="filter-group">
-                            <label class="filter-label" for="cirurgicoProgramFilter">Programa</label>
-                            <select class="filter-select" id="cirurgicoProgramFilter">
-                                <option value="">Todos os Programas</option>
-                            </select>
+                    <nav class="quick-nav" id="cirurgicoQuickNav" aria-label="Navegação rápida do BI Cirúrgico">
+                        <button type="button" class="quick-nav-btn" data-scroll-target="#cirurgicoFiltersSection"><i class="fas fa-filter"></i><span>Filtros</span></button>
+                        <button type="button" class="quick-nav-btn" data-scroll-target="#cirurgicoKpiSection"><i class="fas fa-chart-line"></i><span>Indicadores</span></button>
+                        <button type="button" class="quick-nav-btn" data-scroll-target="#cirurgicoChartsSection"><i class="fas fa-chart-pie"></i><span>Gráficos</span></button>
+                        <button type="button" class="quick-nav-btn" data-scroll-target="#cirurgicoInsightsSection"><i class="fas fa-lightbulb"></i><span>Insights</span></button>
+                    </nav>
+
+                    <section class="filters-section" id="cirurgicoFiltersSection">
+                        <div class="filters-grid">
+                            <div class="filter-group">
+                                <label class="filter-label" for="cirurgicoProgramFilter">Programa</label>
+                                <select class="filter-select" id="cirurgicoProgramFilter">
+                                    <option value="">Todos os Programas</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label class="filter-label" for="cirurgicoYearFilter">Ano</label>
+                                <select class="filter-select" id="cirurgicoYearFilter">
+                                    <option value="">Todos os Anos</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label class="filter-label" for="cirurgicoMonthFilter">Mês</label>
+                                <select class="filter-select" id="cirurgicoMonthFilter">
+                                    <option value="">Todos os Meses</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label class="filter-label" for="cirurgicoSpecialtyFilter">Especialidade</label>
+                                <select class="filter-select" id="cirurgicoSpecialtyFilter">
+                                    <option value="">Todas as Especialidades</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label class="filter-label" for="cirurgicoSituationFilter">Situação FastMedic</label>
+                                <select class="filter-select" id="cirurgicoSituationFilter">
+                                    <option value="">Todas as Situações</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="filter-group">
-                            <label class="filter-label" for="cirurgicoYearFilter">Ano</label>
-                            <select class="filter-select" id="cirurgicoYearFilter">
-                                <option value="">Todos os Anos</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label class="filter-label" for="cirurgicoMonthFilter">Mês</label>
-                            <select class="filter-select" id="cirurgicoMonthFilter">
-                                <option value="">Todos os Meses</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label class="filter-label" for="cirurgicoSpecialtyFilter">Especialidade</label>
-                            <select class="filter-select" id="cirurgicoSpecialtyFilter">
-                                <option value="">Todas as Especialidades</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label class="filter-label" for="cirurgicoSituationFilter">Situação FastMedic</label>
-                            <select class="filter-select" id="cirurgicoSituationFilter">
-                                <option value="">Todas as Situações</option>
-                            </select>
+                        <div class="active-filters" id="cirurgicoActiveFilters" aria-live="polite">
+                            <span class="filter-chip is-empty">Nenhum filtro ativo</span>
                         </div>
                     </section>
 
-                    <section class="kpi-section">
+                    <section class="kpi-section" id="cirurgicoKpiSection">
                         <div class="kpi-card">
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">Cirurgias Realizadas</div>
-                                    <div class="kpi-value" id="cirurgicoSurgeriesCount">0</div>
-                                    <div class="kpi-trend trend-up"><i class="fas fa-arrow-up"></i> Evolução positiva</div>
+                                    <div class="kpi-value skeleton-block" id="cirurgicoSurgeriesCount">0</div>
+                                    <div class="kpi-trend trend-up skeleton-block"><i class="fas fa-arrow-up"></i> Evolução positiva</div>
                                 </div>
                                 <div class="kpi-icon">
                                     <i class="fas fa-procedures"></i>
@@ -2562,8 +2716,8 @@
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">Agendamentos Pendentes</div>
-                                    <div class="kpi-value" id="cirurgicoPendingCount">0</div>
-                                    <div class="kpi-trend trend-down"><i class="fas fa-arrow-down"></i> Acompanhamento contínuo</div>
+                                    <div class="kpi-value skeleton-block" id="cirurgicoPendingCount">0</div>
+                                    <div class="kpi-trend trend-down skeleton-block"><i class="fas fa-arrow-down"></i> Acompanhamento contínuo</div>
                                 </div>
                                 <div class="kpi-icon">
                                     <i class="fas fa-calendar-check"></i>
@@ -2574,8 +2728,8 @@
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">Pacientes Federais</div>
-                                    <div class="kpi-value" id="cirurgicoFederalCount">0</div>
-                                    <div class="kpi-trend trend-up"><i class="fas fa-arrow-up"></i> Tendência de crescimento</div>
+                                    <div class="kpi-value skeleton-block" id="cirurgicoFederalCount">0</div>
+                                    <div class="kpi-trend trend-up skeleton-block"><i class="fas fa-arrow-up"></i> Tendência de crescimento</div>
                                 </div>
                                 <div class="kpi-icon">
                                     <i class="fas fa-user-injured"></i>
@@ -2586,8 +2740,8 @@
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">Pacientes Estaduais</div>
-                                    <div class="kpi-value" id="cirurgicoStateCount">0</div>
-                                    <div class="kpi-trend trend-up"><i class="fas fa-arrow-up"></i> Monitoramento ativo</div>
+                                    <div class="kpi-value skeleton-block" id="cirurgicoStateCount">0</div>
+                                    <div class="kpi-trend trend-up skeleton-block"><i class="fas fa-arrow-up"></i> Monitoramento ativo</div>
                                 </div>
                                 <div class="kpi-icon">
                                     <i class="fas fa-user-md"></i>
@@ -2598,8 +2752,8 @@
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">Taxa de Confirmação</div>
-                                    <div class="kpi-value" id="cirurgicoConfirmationRate">0%</div>
-                                    <div class="kpi-trend trend-up"><i class="fas fa-arrow-up"></i> Tendência positiva</div>
+                                    <div class="kpi-value skeleton-block" id="cirurgicoConfirmationRate">0%</div>
+                                    <div class="kpi-trend trend-up skeleton-block"><i class="fas fa-arrow-up"></i> Tendência positiva</div>
                                 </div>
                                 <div class="kpi-icon">
                                     <i class="fas fa-chart-line"></i>
@@ -2610,8 +2764,8 @@
                             <div class="kpi-header">
                                 <div>
                                     <div class="kpi-title">Tempo médio de espera</div>
-                                    <div class="kpi-value" id="cirurgicoAvgWaitTime">0d</div>
-                                    <div class="kpi-trend trend-down"><i class="fas fa-hourglass-half"></i> Acompanhamento contínuo</div>
+                                    <div class="kpi-value skeleton-block" id="cirurgicoAvgWaitTime">0d</div>
+                                    <div class="kpi-trend trend-down skeleton-block"><i class="fas fa-hourglass-half"></i> Acompanhamento contínuo</div>
                                 </div>
                                 <div class="kpi-icon">
                                     <i class="fas fa-stopwatch"></i>
@@ -2620,7 +2774,7 @@
                         </div>
                     </section>
 
-                    <section class="charts-section">
+                    <section class="charts-section" id="cirurgicoChartsSection">
                         <div class="chart-container" data-cirurgico-chart="especialidade">
                             <div class="chart-header">
                                 <div class="chart-title">Distribuição por Especialidade</div>
@@ -2628,7 +2782,7 @@
                                     <button class="chart-btn chart-expand-btn" type="button" data-action="expand-chart" data-cirurgico-chart-target="cirurgicoSpecialtyChart" aria-expanded="false"><i class="fas fa-expand"></i></button>
                                 </div>
                             </div>
-                            <div class="chart-wrapper">
+                            <div class="chart-wrapper skeleton-block">
                                 <canvas id="cirurgicoSpecialtyChart"></canvas>
                             </div>
                         </div>
@@ -2639,7 +2793,7 @@
                                     <button class="chart-btn chart-expand-btn" type="button" data-action="expand-chart" data-cirurgico-chart-target="cirurgicoMonthlyChart" aria-expanded="false"><i class="fas fa-expand"></i></button>
                                 </div>
                             </div>
-                            <div class="chart-wrapper">
+                            <div class="chart-wrapper skeleton-block">
                                 <canvas id="cirurgicoMonthlyChart"></canvas>
                             </div>
                         </div>
@@ -2650,13 +2804,13 @@
                                     <button class="chart-btn chart-expand-btn" type="button" data-action="expand-chart" data-cirurgico-chart-target="cirurgicoStatusChart" aria-expanded="false"><i class="fas fa-expand"></i></button>
                                 </div>
                             </div>
-                            <div class="chart-wrapper">
+                            <div class="chart-wrapper skeleton-block">
                                 <canvas id="cirurgicoStatusChart"></canvas>
                             </div>
                         </div>
                     </section>
 
-                    <section class="dashboard-grid">
+                    <section class="dashboard-grid" id="cirurgicoGridSection">
                         <div class="grid-item">
                             <div class="grid-header">
                                 <div class="grid-title">Distribuição Geográfica - Ceará</div>
@@ -2670,16 +2824,16 @@
                         </div>
                     </section>
 
-                    <section class="insights-section">
+                    <section class="insights-section" id="cirurgicoInsightsSection">
                         <div class="table-card">
                             <div class="table-header">
                                 <div class="table-title">Registros Cirúrgicos</div>
                                 <div class="badge">
                                     <i class="fas fa-table"></i>
-                                    <span id="cirurgicoTableCount">0 registros</span>
+                                    <span class="skeleton-block" id="cirurgicoTableCount">0 registros</span>
                                 </div>
                             </div>
-                            <div class="table-scroll">
+                            <div class="table-scroll skeleton-block">
                                 <table class="data-table">
                                     <thead>
                                         <tr>
@@ -2704,7 +2858,7 @@
                                     <span>Análise</span>
                                 </div>
                             </div>
-                            <ul class="insight-list" id="cirurgicoInsightsList">
+                            <ul class="insight-list skeleton-block" id="cirurgicoInsightsList">
                                 <li class="insight-item">
                                     <i class="fas fa-info-circle" style="color: var(--primary);"></i>
                                     <span>Carregando análises...</span>
@@ -2877,6 +3031,8 @@
                 monthFilter: 'cirurgicoMonthFilter',
                 specialtyFilter: 'cirurgicoSpecialtyFilter',
                 situationFilter: 'cirurgicoSituationFilter',
+                activeFilters: 'cirurgicoActiveFilters',
+                quickNav: 'cirurgicoQuickNav',
                 surgeriesCount: 'cirurgicoSurgeriesCount',
                 pendingCount: 'cirurgicoPendingCount',
                 federalCount: 'cirurgicoFederalCount',
@@ -2892,12 +3048,31 @@
             });
 
             const DEFAULT_FILTERS = Object.freeze({
+                dataset: 'cirurgico',
                 programa: '',
                 ano: '',
                 mes: '',
                 especialidade: '',
                 situacao: '',
                 search: ''
+            });
+
+            const FILTER_LABELS = Object.freeze({
+                programa: 'Programa',
+                ano: 'Ano',
+                mes: 'Mês',
+                especialidade: 'Especialidade',
+                situacao: 'Situação',
+                search: 'Busca'
+            });
+
+            const FILTER_CONTROL_MAP = Object.freeze({
+                programa: 'programFilter',
+                ano: 'yearFilter',
+                mes: 'monthFilter',
+                especialidade: 'specialtyFilter',
+                situacao: 'situationFilter',
+                search: 'searchInput'
             });
 
             const fallbackData = Object.freeze({
@@ -3127,6 +3302,8 @@
                     monthFilter: getElement(SELECTORS.monthFilter),
                     specialtyFilter: getElement(SELECTORS.specialtyFilter),
                     situationFilter: getElement(SELECTORS.situationFilter),
+                    activeFilters: getElement(SELECTORS.activeFilters),
+                    quickNav: getElement(SELECTORS.quickNav),
                     surgeriesCount: getElement(SELECTORS.surgeriesCount),
                     pendingCount: getElement(SELECTORS.pendingCount),
                     federalCount: getElement(SELECTORS.federalCount),
@@ -3201,6 +3378,14 @@
                 loading.classList.toggle('visible', show);
             }
 
+            function toggleLoadingState(isLoading) {
+                const { container } = getElements();
+                if (!container) {
+                    return;
+                }
+                container.setAttribute('data-loading', isLoading ? 'true' : 'false');
+            }
+
             function getCurrentFilters() {
                 const elements = getElements();
                 return {
@@ -3211,6 +3396,101 @@
                     situacao: (elements.situationFilter?.value || '').trim(),
                     search: (elements.searchInput?.value || '').trim()
                 };
+            }
+
+            function renderActiveFilters(filters = state.filters) {
+                const { activeFilters } = getElements();
+                if (!activeFilters) {
+                    return;
+                }
+
+                activeFilters.innerHTML = '';
+                const entries = Object.keys(FILTER_LABELS).map(key => ({
+                    key,
+                    label: FILTER_LABELS[key],
+                    value: (filters && filters[key]) || ''
+                })).filter(entry => entry.value);
+
+                if (entries.length === 0) {
+                    const span = document.createElement('span');
+                    span.className = 'filter-chip is-empty';
+                    span.textContent = 'Nenhum filtro ativo';
+                    activeFilters.appendChild(span);
+                    return;
+                }
+
+                entries.forEach(entry => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'filter-chip';
+                    button.setAttribute('data-filter-key', entry.key);
+                    button.innerHTML = `<i class="fas fa-times"></i><span>${entry.label}: ${entry.value}</span>`;
+                    activeFilters.appendChild(button);
+                });
+
+                const clearButton = document.createElement('button');
+                clearButton.type = 'button';
+                clearButton.className = 'filter-chip';
+                clearButton.setAttribute('data-action', 'clear-all');
+                clearButton.innerHTML = '<i class="fas fa-broom"></i><span>Limpar filtros</span>';
+                activeFilters.appendChild(clearButton);
+            }
+
+            function handleActiveFiltersClick(event) {
+                const target = event.target.closest('.filter-chip');
+                if (!target || target.classList.contains('is-empty')) {
+                    return;
+                }
+
+                const action = target.getAttribute('data-action');
+                const elements = getElements();
+
+                if (action === 'clear-all') {
+                    Object.entries(FILTER_CONTROL_MAP).forEach(([key, controlName]) => {
+                        const control = elements[controlName];
+                        if (control) {
+                            control.value = '';
+                        }
+                    });
+                    const clearedFilters = { ...DEFAULT_FILTERS };
+                    state.filters = { ...clearedFilters };
+                    renderActiveFilters(clearedFilters);
+                    applyFilters(clearedFilters);
+                    return;
+                }
+
+                const filterKey = target.getAttribute('data-filter-key');
+                if (!filterKey || !Object.prototype.hasOwnProperty.call(FILTER_CONTROL_MAP, filterKey)) {
+                    return;
+                }
+
+                const controlName = FILTER_CONTROL_MAP[filterKey];
+                const control = elements[controlName];
+                if (control) {
+                    control.value = '';
+                }
+
+                const nextFilters = { ...state.filters, [filterKey]: '' };
+                renderActiveFilters(nextFilters);
+                applyFilters(nextFilters);
+            }
+
+            function handleQuickNavClick(event) {
+                const button = event.target.closest('.quick-nav-btn');
+                if (!button) {
+                    return;
+                }
+
+                const targetSelector = button.getAttribute('data-scroll-target');
+                if (targetSelector) {
+                    event.preventDefault();
+                    document.querySelectorAll('#cirurgicoDashboard .quick-nav-btn.is-active').forEach(btn => btn.classList.remove('is-active'));
+                    button.classList.add('is-active');
+                    const section = document.querySelector(targetSelector);
+                    if (section) {
+                        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }
             }
 
             function updateSelectOptions(selectElement, options = [], placeholder = 'Todas as opções') {
@@ -3244,6 +3524,7 @@
                 updateSelectOptions(elements.monthFilter, filters.months, 'Todos os Meses');
                 updateSelectOptions(elements.specialtyFilter, filters.specialties, 'Todas as Especialidades');
                 updateSelectOptions(elements.situationFilter, filters.situations, 'Todas as Situações');
+                renderActiveFilters(state.filters);
             }
 
             function initializeCharts() {
@@ -3658,6 +3939,20 @@
                     return Promise.reject(new Error('Apps Script não disponível'));
                 }
 
+                try {
+                    const payloadPreview = args.map(arg => {
+                        if (arg && typeof arg === 'object') {
+                            const clone = { ...arg };
+                            if (clone.search) { clone.search = String(clone.search); }
+                            return clone;
+                        }
+                        return arg;
+                    });
+                    console.info('[CirurgicoDashboard] Executando Apps Script:', methodName, payloadPreview);
+                } catch (logError) {
+                    console.warn('[CirurgicoDashboard] Falha ao registrar log da chamada Apps Script:', logError);
+                }
+
                 return new Promise((resolve, reject) => {
                     google.script.run
                         .withSuccessHandler(response => {
@@ -3702,13 +3997,18 @@
             }
 
             function applyFilters(filters = state.filters) {
-                state.filters = { ...DEFAULT_FILTERS, ...filters };
+                state.filters = { ...DEFAULT_FILTERS, ...filters, dataset: 'cirurgico' };
+                renderActiveFilters(state.filters);
 
                 if (!hasAppsScript) {
+                    toggleLoadingState(true);
                     const snapshot = buildLocalSnapshot(state.filters);
                     updateFromSnapshot(snapshot);
+                    toggleLoadingState(false);
                     return Promise.resolve();
                 }
+
+                toggleLoadingState(true);
 
                 return Promise.all([
                     runAppsScript('getCirurgicoFilteredData', state.filters),
@@ -3728,11 +4028,15 @@
                     .catch(error => {
                         console.error('Erro ao aplicar filtros cirúrgicos:', error);
                         if (typeof showNotification === 'function') { showNotification('Não foi possível carregar os dados filtrados.', 'error'); } else { console.error('Não foi possível carregar os dados filtrados.'); }
+                    })
+                    .finally(() => {
+                        toggleLoadingState(false);
                     });
             }
 
             function loadInitialData(options = {}) {
                 const { forceReload } = options;
+                toggleLoadingState(true);
                 showGlobalLoading(true);
                 setPerformanceMessage('Carregando dados cirúrgicos atualizados...');
 
@@ -3747,6 +4051,7 @@
                     })
                     .finally(() => {
                         showGlobalLoading(false);
+                        toggleLoadingState(false);
                         state.initialized = true;
                     });
             }
@@ -3841,6 +4146,14 @@
                     }
                 });
 
+                if (elements.activeFilters) {
+                    elements.activeFilters.addEventListener('click', handleActiveFiltersClick);
+                }
+
+                if (elements.quickNav) {
+                    elements.quickNav.addEventListener('click', handleQuickNavClick);
+                }
+
                 document.querySelectorAll('#cirurgicoDashboard .chart-expand-btn').forEach(btn => {
                     btn.addEventListener('click', toggleChartExpand);
                 });
@@ -3859,6 +4172,9 @@
                 }
 
                 state.isActive = true;
+                if (elements.quickNav) {
+                    elements.quickNav.querySelectorAll('.quick-nav-btn').forEach(btn => btn.classList.remove('is-active'));
+                }
                 initializeCharts();
                 bindEvents();
 
