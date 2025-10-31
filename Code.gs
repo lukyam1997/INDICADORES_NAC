@@ -45,6 +45,7 @@ const BASE_DATA_CACHE = {
 
 const CACHE_REGISTRY_KEY = 'cacheRegistry_v1';
 const CACHE_REGISTRY_MAX_KEYS_PER_PREFIX = 30;
+const CIRURGICO_CACHE_MAX_BYTES = 90000;
 
 function normalizeDatasetId(datasetId) {
   if (!datasetId) {
@@ -1979,6 +1980,33 @@ function getChartData(filters = {}) {
 // BI CIRÚRGICO - FUNÇÕES DEDICADAS
 // =============================================
 
+function cacheCirurgicoPayload(cache, cacheKey, payload) {
+  if (!cache || !cacheKey) {
+    return false;
+  }
+
+  try {
+    const serialized = JSON.stringify(payload || {});
+    const byteLength = Utilities.newBlob(serialized).getBytes().length;
+
+    if (byteLength > CIRURGICO_CACHE_MAX_BYTES) {
+      console.warn('Payload do BI Cirúrgico excedeu o limite do cache e não será armazenado.', {
+        cacheKey,
+        byteLength,
+        maxBytes: CIRURGICO_CACHE_MAX_BYTES
+      });
+      return false;
+    }
+
+    cache.put(cacheKey, serialized, CONFIG.cacheDuration || 600);
+    registerCacheKey('cirurgico_base', cacheKey);
+    return true;
+  } catch (error) {
+    console.warn('Falha ao armazenar payload do BI Cirúrgico no cache:', error);
+    return false;
+  }
+}
+
 function getCirurgicoBaseData() {
   const cache = CacheService.getScriptCache();
   const cacheKey = 'cirurgico_base_v1';
@@ -2009,8 +2037,7 @@ function getCirurgicoBaseData() {
         data: [],
         lastUpdated: new Date().toISOString()
       };
-      cache.put(cacheKey, JSON.stringify(emptyPayload), CONFIG.cacheDuration || 600);
-      registerCacheKey('cirurgico_base', cacheKey);
+      cacheCirurgicoPayload(cache, cacheKey, emptyPayload);
       return emptyPayload;
     }
 
@@ -2038,8 +2065,7 @@ function getCirurgicoBaseData() {
       lastUpdated: new Date().toISOString()
     };
 
-    cache.put(cacheKey, JSON.stringify(payload), CONFIG.cacheDuration || 600);
-    registerCacheKey('cirurgico_base', cacheKey);
+    cacheCirurgicoPayload(cache, cacheKey, payload);
 
     return payload;
   } catch (error) {
