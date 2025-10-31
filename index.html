@@ -2293,7 +2293,7 @@
             <div class="header-content">
                 <div class="header-title">
                     <div class="logo">
-                        <img src="https://i.ibb.co/M52TGw39/Design-sem-nome-3.png" alt="Hospital Universitário do Ceará - Marca institucional">
+                        <img src="https://i.ibb.co/1f1VWwpm/signa-icon.png" alt="Hospital Universitário do Ceará - Marca institucional">
                     </div>
                     <div class="title-text">
                         <h1>Hospital Universitário do Ceará - Indicadores Gerenciados</h1>
@@ -2896,7 +2896,10 @@
             console.log(`🚀 NEXUS MED Dashboard Iniciado • BI ativo: ${activeDataset.toUpperCase()}`);
 
             if (activeDataset === 'cirurgico') {
-                CirurgicoDashboard.activate({ initialLoad: true });
+                CirurgicoDashboard.activate({ initialLoad: true }).catch(error => {
+                    console.error('Falha ao iniciar o BI cirúrgico:', error);
+                    showError('Não foi possível carregar o BI Cirúrgico na abertura.');
+                });
             } else {
                 initializeDashboard();
                 setupEventListeners();
@@ -3152,6 +3155,7 @@
             });
 
             const NORMALIZED_MARKER = Symbol('cirurgicoNormalized');
+            const APPS_SCRIPT_TIMEOUT_MS = 15000;
 
             function normalizeFieldKey(key) {
                 return (key || '')
@@ -3954,15 +3958,38 @@
                 }
 
                 return new Promise((resolve, reject) => {
+                    let settled = false;
+                    const timer = setTimeout(() => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        console.error(`[CirurgicoDashboard] Tempo limite excedido na chamada ${methodName}.`);
+                        reject(new Error('Tempo limite excedido ao buscar dados cirúrgicos.'));
+                    }, APPS_SCRIPT_TIMEOUT_MS);
+
                     google.script.run
                         .withSuccessHandler(response => {
-                            if (response && response.success !== false) {
-                                resolve(response);
-                            } else {
-                                reject(new Error(response && response.error ? response.error : 'Resposta inválida do servidor'));
+                            if (settled) {
+                                return;
                             }
+                            settled = true;
+                            clearTimeout(timer);
+
+                            if (response && response.success === false) {
+                                const message = response && response.error ? response.error : 'Resposta inválida do servidor';
+                                reject(new Error(message));
+                                return;
+                            }
+
+                            resolve(response);
                         })
                         .withFailureHandler(error => {
+                            if (settled) {
+                                return;
+                            }
+                            settled = true;
+                            clearTimeout(timer);
                             reject(error);
                         })[methodName](...args);
                 });
@@ -4028,6 +4055,10 @@
                     .catch(error => {
                         console.error('Erro ao aplicar filtros cirúrgicos:', error);
                         if (typeof showNotification === 'function') { showNotification('Não foi possível carregar os dados filtrados.', 'error'); } else { console.error('Não foi possível carregar os dados filtrados.'); }
+                        if (error && typeof error === 'object') {
+                            error.__cirurgicoNotified = true;
+                        }
+                        throw error;
                     })
                     .finally(() => {
                         toggleLoadingState(false);
@@ -4045,14 +4076,24 @@
                 return filtersPromise
                     .then(() => loadBaseData())
                     .then(response => {
-                        setLastUpdate(response.lastUpdated);
-                        state.lastUpdated = response.lastUpdated || new Date().toISOString();
+                        setLastUpdate(response?.lastUpdated);
+                        state.lastUpdated = response?.lastUpdated || new Date().toISOString();
                         return applyFilters({ ...DEFAULT_FILTERS });
+                    })
+                    .then(() => {
+                        state.initialized = true;
+                    })
+                    .catch(error => {
+                        state.initialized = false;
+                        console.error('Erro ao carregar o BI cirúrgico:', error);
+                        if (typeof showNotification === 'function' && !(error && error.__cirurgicoNotified)) {
+                            showNotification('Não foi possível carregar o BI Cirúrgico.', 'error');
+                        }
+                        throw error;
                     })
                     .finally(() => {
                         showGlobalLoading(false);
                         toggleLoadingState(false);
-                        state.initialized = true;
                     });
             }
 
@@ -4168,7 +4209,7 @@
             function activate(options = {}) {
                 const elements = getElements();
                 if (!elements.container) {
-                    return;
+                    return Promise.reject(new Error('Contêiner do BI cirúrgico não encontrado.'));
                 }
 
                 state.isActive = true;
@@ -4178,11 +4219,15 @@
                 initializeCharts();
                 bindEvents();
 
-                if (!state.initialized || options.forceReload || options.initialLoad) {
-                    loadInitialData({ forceReload: options.forceReload });
-                } else {
-                    applyFilters(state.filters);
-                }
+                const shouldReload = !state.initialized || options.forceReload || options.initialLoad;
+                const activationPromise = shouldReload
+                    ? loadInitialData({ forceReload: options.forceReload })
+                    : applyFilters(state.filters);
+
+                return Promise.resolve(activationPromise).catch(error => {
+                    state.isActive = false;
+                    throw error;
+                });
             }
 
             function deactivate() {
@@ -4465,13 +4510,42 @@
             });
         }
 
-        function setupDatasetMenu() {
-            document.querySelectorAll('[data-dataset-target]').forEach(button => {
-                button.addEventListener('click', () => {
-                    const target = button.getAttribute('data-dataset-target');
-                    switchDataset(target);
-                });
+        function handleDatasetButtonClick(event) {
+            const button = event?.currentTarget;
+            if (!button) {
+                return;
+            }
+
+            const target = button.getAttribute('data-dataset-target');
+            if (!target) {
+                console.error('Botão de BI sem destino configurado.');
+                showError('Opção de BI indisponível.');
+                return;
+            }
+
+            switchDataset(target).catch(error => {
+                console.error('Falha ao alternar o BI:', error);
             });
+        }
+
+        function setupDatasetMenu() {
+            const buttons = Array.from(document.querySelectorAll('[data-dataset-target]'));
+
+            if (!buttons.length) {
+                console.error('Nenhum seletor de BI foi encontrado na barra lateral.');
+                showError('Não foi possível carregar o seletor de dashboards. Recarregue a página.');
+                return;
+            }
+
+            buttons.forEach(button => {
+                if (button.dataset.datasetListenerBound === 'true') {
+                    return;
+                }
+
+                button.addEventListener('click', handleDatasetButtonClick);
+                button.dataset.datasetListenerBound = 'true';
+            });
+
             updateDatasetMenuState();
         }
 
@@ -4522,7 +4596,7 @@
             updatePeriodControlsState();
         }
 
-        function switchDataset(nextDataset, options = {}) {
+        async function switchDataset(nextDataset, options = {}) {
             const normalized = normalizeDatasetId(nextDataset);
             const forceReload = options.force === true;
 
@@ -4530,57 +4604,72 @@
                 return;
             }
 
-            activeDataset = normalized;
-            persistDatasetId(activeDataset);
-            updateDatasetVisuals();
-            requestCache.clear();
+            const previousDataset = activeDataset;
+            const previousFilters = cloneData(activeFilters);
 
-            if (normalized === 'cirurgico') {
-                CirurgicoDashboard.activate({ forceReload });
-                return;
-            }
+            try {
+                activeDataset = normalized;
+                persistDatasetId(activeDataset);
+                updateDatasetVisuals();
+                requestCache.clear();
 
-            CirurgicoDashboard.deactivate();
-            activeFilters = buildInitialFilters(activeDataset);
-            resetDashboardState();
-            resetFilterControls();
+                if (normalized === 'cirurgico') {
+                    await Promise.resolve(
+                        CirurgicoDashboard.activate({
+                            forceReload,
+                            initialLoad: options.initialLoad === true
+                        })
+                    );
+                    return;
+                }
 
-            if (!ambulatorialListenersBound) {
-                setupEventListeners();
-            }
+                CirurgicoDashboard.deactivate();
+                activeFilters = buildInitialFilters(activeDataset);
+                resetDashboardState();
+                resetFilterControls();
 
-            if (!hasAppsScript) {
-                const datasetDefinition = getDatasetDefinition(activeDataset);
-                updatePerformanceInfo(`Modo demonstração ativo para ${datasetDefinition.label}.`);
-                loadDashboardData(activeFilters, 1).finally(() => {
+                if (!ambulatorialListenersBound) {
+                    setupEventListeners();
+                }
+
+                if (!hasAppsScript) {
+                    const datasetDefinition = getDatasetDefinition(activeDataset);
+                    updatePerformanceInfo(`Modo demonstração ativo para ${datasetDefinition.label}.`);
+                    await loadDashboardData(activeFilters, 1);
                     ambulatorialInitialized = true;
-                });
-                return;
-            }
+                    return;
+                }
 
-            showLoadingState();
-            const filtersPromise = (forceReload || !ambulatorialInitialized)
-                ? loadFilterOptions().then(() => {
+                const shouldReloadFilters = forceReload || !ambulatorialInitialized;
+
+                if (shouldReloadFilters) {
+                    updatePerformanceInfo('Carregando filtros atualizados...');
+                    await loadFilterOptions();
                     updatePeriodRangeOptions({ preserveSelection: false });
                     updatePeriodControlsState();
-                })
-                : Promise.resolve().then(() => {
+                } else {
                     updatePeriodRangeOptions({ preserveSelection: false });
                     updatePeriodControlsState();
-                });
+                }
 
-            filtersPromise
-                .then(() => loadDashboardData(activeFilters, 1))
-                .then(() => {
-                    ambulatorialInitialized = true;
-                })
-                .catch(error => {
-                    console.error('Erro ao alternar BI:', error);
-                    showError('Não foi possível carregar os dados do BI selecionado');
-                })
-                .finally(() => {
-                    hideLoadingState();
-                });
+                await loadDashboardData(activeFilters, 1);
+                ambulatorialInitialized = true;
+            } catch (error) {
+                console.error('Erro ao alternar BI:', error);
+                showError('Não foi possível carregar os dados do BI selecionado');
+                activeDataset = previousDataset;
+                activeFilters = previousFilters;
+                persistDatasetId(activeDataset);
+                updateDatasetVisuals();
+
+                if (previousDataset === 'cirurgico') {
+                    CirurgicoDashboard.activate().catch(restoreError => {
+                        console.error('Falha ao restaurar o BI cirúrgico após erro:', restoreError);
+                    });
+                } else if (!ambulatorialInitialized) {
+                    scheduleInitialAmbulatorialLoad({ immediate: true });
+                }
+            }
         }
         const dashboardHeader = document.querySelector('.dashboard-header');
         const MONTH_INFO = [
@@ -4841,12 +4930,14 @@
 
         // ===== INICIALIZAÇÃO DO SISTEMA =====
         async function initializeDashboard() {
+            let filtersLoaded = false;
             try {
                 activeFilters = buildInitialFilters(activeDataset);
                 const periodTypeSelect = document.getElementById('periodTypeFilter');
                 if (periodTypeSelect) {
                     periodTypeSelect.value = activeFilters.periodType;
                 }
+
                 populateSelect('mesFilter', MONTH_INFO);
                 setupPeriodRangeMultiSelect();
                 updatePeriodControlsState();
@@ -4854,16 +4945,51 @@
 
                 showLoadingState();
                 await loadFilterOptions();
+                filtersLoaded = true;
                 updatePeriodControlsState();
-                await loadDashboardData();
-                hideLoadingState();
-
-                // Animações de entrada
-                animateElements();
-                ambulatorialInitialized = true;
             } catch (error) {
                 console.error('Erro na inicialização:', error);
                 showError('Falha ao inicializar o dashboard');
+            } finally {
+                hideLoadingState();
+            }
+
+            // Animações de entrada
+            animateElements();
+            if (filtersLoaded) {
+                scheduleInitialAmbulatorialLoad();
+            }
+        }
+
+        function scheduleInitialAmbulatorialLoad(options = {}) {
+            const config = typeof options === 'object' && options !== null ? options : {};
+            const immediate = config.immediate === true;
+            const datasetDefinition = getDatasetDefinition(activeDataset);
+            if (!datasetDefinition || datasetDefinition.id !== 'ambulatorial') {
+                return;
+            }
+            updatePerformanceInfo(`Preparando indicadores do ${datasetDefinition.label}...`);
+
+            const executeLoad = () => {
+                loadDashboardData(activeFilters, 1)
+                    .then(() => {
+                        ambulatorialInitialized = true;
+                    })
+                    .catch(error => {
+                        console.error('Erro ao carregar dados iniciais do BI ambulatorial:', error);
+                        showError('Falha ao carregar os dados iniciais do BI Ambulatorial');
+                    });
+            };
+
+            if (immediate) {
+                executeLoad();
+                return;
+            }
+
+            if (typeof requestIdleCallback === 'function') {
+                requestIdleCallback(executeLoad, { timeout: 1200 });
+            } else {
+                setTimeout(executeLoad, 120);
             }
         }
 
