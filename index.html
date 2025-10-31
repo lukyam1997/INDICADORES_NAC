@@ -5749,19 +5749,29 @@
                     charts: cloneData(fallbackSnapshot.charts || {})
                 };
 
-                applyDashboardPayload(simulatedResult, {
-                    defaultMessage: 'Modo demonstração ativo • Dados simulados atualizados'
-                });
+                let applyError = null;
+                try {
+                    applyDashboardPayload(simulatedResult, {
+                        defaultMessage: 'Modo demonstração ativo • Dados simulados atualizados'
+                    });
+                } catch (error) {
+                    applyError = error;
+                    console.error('Erro ao processar dados simulados:', error);
+                    showError('Não foi possível processar os dados demonstrativos.');
+                } finally {
+                    hideLoadingState();
+                    isLoading = false;
+                }
 
-                hideLoadingState();
-                isLoading = false;
-                const response = Promise.resolve(simulatedResult);
                 if (pendingFilters) {
                     const next = pendingFilters;
                     pendingFilters = null;
                     queueMicrotask(() => loadDashboardData(next.filters, next.page));
                 }
-                return response;
+
+                return applyError
+                    ? Promise.reject(applyError)
+                    : Promise.resolve(simulatedResult);
             }
 
             return new Promise((resolve, reject) => {
@@ -5769,9 +5779,27 @@
                     .withSuccessHandler(result => {
                         const sanitizedResult = result && typeof result === 'object' ? result : {};
                         const duration = Math.max(0, Math.round(getNow() - requestStartedAt));
-                        const hasChartInline = applyDashboardPayload(sanitizedResult, {
-                            durationMs: duration
-                        });
+                        let hasChartInline = false;
+
+                        try {
+                            hasChartInline = applyDashboardPayload(sanitizedResult, {
+                                durationMs: duration
+                            });
+                        } catch (error) {
+                            console.error('Erro ao processar o retorno da planilha:', error);
+                            showError('Não foi possível atualizar os indicadores.');
+                            hideLoadingState();
+                            isLoading = false;
+
+                            if (pendingFilters) {
+                                const next = pendingFilters;
+                                pendingFilters = null;
+                                queueMicrotask(() => loadDashboardData(next.filters, next.page));
+                            }
+
+                            reject(error);
+                            return;
+                        }
 
                         hideLoadingState();
                         isLoading = false;
