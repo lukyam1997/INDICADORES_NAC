@@ -3362,6 +3362,13 @@
                 }
             }
 
+            function showErrorMessage(message) {
+                const { performanceInfo } = getElements();
+                if (performanceInfo) {
+                    performanceInfo.innerHTML = `<i class="fas fa-triangle-exclamation"></i> ${message || 'Não foi possível carregar os dados cirúrgicos no momento.'}`;
+                }
+            }
+
             function setLastUpdate(timestamp) {
                 const { lastUpdate } = getElements();
                 const date = timestamp ? new Date(timestamp) : new Date();
@@ -4086,6 +4093,7 @@
                     .catch(error => {
                         state.initialized = false;
                         console.error('Erro ao carregar o BI cirúrgico:', error);
+                        showErrorMessage('Não foi possível carregar o BI Cirúrgico. Tente novamente em instantes.');
                         if (typeof showNotification === 'function' && !(error && error.__cirurgicoNotified)) {
                             showNotification('Não foi possível carregar o BI Cirúrgico.', 'error');
                         }
@@ -4238,6 +4246,9 @@
                 activate,
                 deactivate,
                 refreshChartsTheme,
+                showErrorState(message) {
+                    showErrorMessage(message);
+                },
                 refresh() {
                     return loadInitialData({ forceReload: true });
                 }
@@ -4656,7 +4667,17 @@
                 ambulatorialInitialized = true;
             } catch (error) {
                 console.error('Erro ao alternar BI:', error);
-                showError('Não foi possível carregar os dados do BI selecionado');
+                const failedDefinition = getDatasetDefinition(normalized);
+                const datasetLabel = failedDefinition?.label || 'BI selecionado';
+                showError(`Não foi possível carregar os dados do ${datasetLabel}`);
+
+                if (normalized === 'cirurgico') {
+                    if (CirurgicoDashboard && typeof CirurgicoDashboard.showErrorState === 'function') {
+                        CirurgicoDashboard.showErrorState('Falha ao carregar os dados cirúrgicos. Tente atualizar novamente.');
+                    }
+                    return;
+                }
+
                 activeDataset = previousDataset;
                 activeFilters = previousFilters;
                 persistDatasetId(activeDataset);
