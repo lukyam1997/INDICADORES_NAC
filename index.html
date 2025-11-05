@@ -571,6 +571,50 @@
             font-size: 0.85rem;
             color: var(--text-title);
             font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 46px;
+            transition: background var(--transition-fast), border-color var(--transition-fast);
+        }
+
+        .performance-info.is-loading {
+            background: var(--surface);
+            border-color: var(--primary-border-strong);
+        }
+
+        .performance-info .inline-spinner {
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            border: 2px solid var(--primary-border-strong);
+            border-top-color: transparent;
+            display: inline-block;
+            animation: inline-spin 0.7s linear infinite;
+        }
+
+        .performance-info .performance-message {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        @keyframes inline-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .visually-hidden {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            padding: 0 !important;
+            margin: -1px !important;
+            overflow: hidden !important;
+            clip: rect(0, 0, 0, 0) !important;
+            white-space: nowrap !important;
+            border: 0 !important;
         }
 
         /* ===== FILTROS COM DESIGN MODERNO ===== */
@@ -1707,6 +1751,16 @@
     font-size: 0.85rem;
     color: var(--text-title);
     font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 46px;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+#cirurgicoDashboard .performance-info.is-loading {
+    background: var(--surface);
+    border-color: rgba(111, 232, 181, 0.52);
 }
 
 #cirurgicoDashboard .filters-section {
@@ -3355,17 +3409,20 @@
                 };
             }
 
-            function setPerformanceMessage(message) {
+            function setPerformanceMessage(message, options = {}) {
                 const { performanceInfo } = getElements();
                 if (performanceInfo) {
-                    performanceInfo.innerHTML = `<i class="fas fa-bolt"></i> ${message}`;
+                    setPerformanceInfo(performanceInfo, message, { icon: 'bolt', ...options });
                 }
             }
 
             function showErrorMessage(message) {
                 const { performanceInfo } = getElements();
                 if (performanceInfo) {
-                    performanceInfo.innerHTML = `<i class="fas fa-triangle-exclamation"></i> ${message || 'Não foi possível carregar os dados cirúrgicos no momento.'}`;
+                    setPerformanceInfo(performanceInfo, message || 'Não foi possível carregar os dados cirúrgicos no momento.', {
+                        icon: 'triangle-exclamation',
+                        isLoading: false
+                    });
                 }
             }
 
@@ -3380,13 +3437,12 @@
                 }
             }
 
-            function showGlobalLoading(show) {
-                const loading = document.getElementById('globalLoading');
-                if (!loading) {
-                    return;
+            function showGlobalLoading(show, options = {}) {
+                if (show) {
+                    return showLoadingState(options);
                 }
-                loading.setAttribute('aria-hidden', show ? 'false' : 'true');
-                loading.classList.toggle('visible', show);
+                hideLoadingState();
+                return false;
             }
 
             function toggleLoadingState(isLoading) {
@@ -3466,7 +3522,7 @@
                     const clearedFilters = { ...DEFAULT_FILTERS };
                     state.filters = { ...clearedFilters };
                     renderActiveFilters(clearedFilters);
-                    applyFilters(clearedFilters);
+                    applyFilters(clearedFilters, { reason: 'filters', inlineSpinner: true });
                     return;
                 }
 
@@ -3483,7 +3539,7 @@
 
                 const nextFilters = { ...state.filters, [filterKey]: '' };
                 renderActiveFilters(nextFilters);
-                applyFilters(nextFilters);
+                applyFilters(nextFilters, { reason: 'filters', inlineSpinner: true });
             }
 
             function handleQuickNavClick(event) {
@@ -4030,79 +4086,101 @@
                 });
             }
 
-            function applyFilters(filters = state.filters) {
+            async function applyFilters(filters = state.filters, options = {}) {
                 state.filters = { ...DEFAULT_FILTERS, ...filters, dataset: 'cirurgico' };
                 renderActiveFilters(state.filters);
 
-                if (!hasAppsScript) {
-                    toggleLoadingState(true);
-                    const snapshot = buildLocalSnapshot(state.filters);
-                    updateFromSnapshot(snapshot);
-                    toggleLoadingState(false);
-                    return Promise.resolve();
-                }
+                const elements = getElements();
+                const loadingContext = beginLoadingFeedback({
+                    reason: options.reason || 'filters',
+                    globalOverlay: options.globalOverlay === true,
+                    inlineSpinner: options.inlineSpinner !== false,
+                    targetElement: elements.performanceInfo
+                });
 
                 toggleLoadingState(true);
 
-                return Promise.all([
-                    runAppsScript('getCirurgicoFilteredData', state.filters),
-                    runAppsScript('getCirurgicoKPIMetrics', state.filters),
-                    runAppsScript('getCirurgicoChartData', state.filters)
-                ])
-                    .then(([dataResponse, kpiResponse, chartResponse]) => {
-                        const snapshot = {
-                            rows: mapToNormalized(dataResponse && dataResponse.data),
-                            metrics: (kpiResponse && kpiResponse.metrics) || {},
-                            charts: (chartResponse && chartResponse.charts) || {},
-                            insights: (chartResponse && chartResponse.insights) || [],
-                            lastUpdated: (dataResponse && dataResponse.lastUpdated) || new Date().toISOString()
-                        };
+                try {
+                    if (!hasAppsScript) {
+                        const snapshot = buildLocalSnapshot(state.filters);
                         updateFromSnapshot(snapshot);
-                    })
-                    .catch(error => {
-                        console.error('Erro ao aplicar filtros cirúrgicos:', error);
-                        if (typeof showNotification === 'function') { showNotification('Não foi possível carregar os dados filtrados.', 'error'); } else { console.error('Não foi possível carregar os dados filtrados.'); }
-                        if (error && typeof error === 'object') {
-                            error.__cirurgicoNotified = true;
-                        }
-                        throw error;
-                    })
-                    .finally(() => {
-                        toggleLoadingState(false);
-                    });
+                        return;
+                    }
+
+                    const [dataResponse, kpiResponse, chartResponse] = await Promise.all([
+                        runAppsScript('getCirurgicoFilteredData', state.filters),
+                        runAppsScript('getCirurgicoKPIMetrics', state.filters),
+                        runAppsScript('getCirurgicoChartData', state.filters)
+                    ]);
+
+                    const snapshot = {
+                        rows: mapToNormalized(dataResponse && dataResponse.data),
+                        metrics: (kpiResponse && kpiResponse.metrics) || {},
+                        charts: (chartResponse && chartResponse.charts) || {},
+                        insights: (chartResponse && chartResponse.insights) || [],
+                        lastUpdated: (dataResponse && dataResponse.lastUpdated) || new Date().toISOString()
+                    };
+                    updateFromSnapshot(snapshot);
+                } catch (error) {
+                    console.error('Erro ao aplicar filtros cirúrgicos:', error);
+                    if (typeof showNotification === 'function') {
+                        showNotification('Não foi possível carregar os dados filtrados.', 'error');
+                    } else {
+                        console.error('Não foi possível carregar os dados filtrados.');
+                    }
+                    if (error && typeof error === 'object') {
+                        error.__cirurgicoNotified = true;
+                    }
+                    showErrorMessage('Não foi possível carregar os dados filtrados no momento.');
+                    throw error;
+                } finally {
+                    toggleLoadingState(false);
+                    endLoadingFeedback(loadingContext);
+                }
             }
 
-            function loadInitialData(options = {}) {
+            async function loadInitialData(options = {}) {
                 const { forceReload } = options;
+                const elements = getElements();
+                const loadingContext = beginLoadingFeedback({
+                    reason: forceReload ? 'refresh' : 'initial',
+                    globalOverlay: true,
+                    inlineSpinner: true,
+                    targetElement: elements.performanceInfo
+                });
+
                 toggleLoadingState(true);
-                showGlobalLoading(true);
-                setPerformanceMessage('Carregando dados cirúrgicos atualizados...');
 
-                const filtersPromise = (!state.initialized || forceReload) ? loadFilterOptions() : Promise.resolve();
+                try {
+                    const filtersPromise = (!state.initialized || forceReload)
+                        ? loadFilterOptions()
+                        : Promise.resolve();
 
-                return filtersPromise
-                    .then(() => loadBaseData())
-                    .then(response => {
-                        setLastUpdate(response?.lastUpdated);
-                        state.lastUpdated = response?.lastUpdated || new Date().toISOString();
-                        return applyFilters({ ...DEFAULT_FILTERS });
-                    })
-                    .then(() => {
-                        state.initialized = true;
-                    })
-                    .catch(error => {
-                        state.initialized = false;
-                        console.error('Erro ao carregar o BI cirúrgico:', error);
-                        showErrorMessage('Não foi possível carregar o BI Cirúrgico. Tente novamente em instantes.');
-                        if (typeof showNotification === 'function' && !(error && error.__cirurgicoNotified)) {
-                            showNotification('Não foi possível carregar o BI Cirúrgico.', 'error');
-                        }
-                        throw error;
-                    })
-                    .finally(() => {
-                        showGlobalLoading(false);
-                        toggleLoadingState(false);
+                    await filtersPromise;
+
+                    const response = await loadBaseData();
+                    setLastUpdate(response?.lastUpdated);
+                    state.lastUpdated = response?.lastUpdated || new Date().toISOString();
+
+                    await applyFilters({ ...DEFAULT_FILTERS }, {
+                        reason: forceReload ? 'refresh' : 'initial',
+                        inlineSpinner: true,
+                        globalOverlay: false
                     });
+
+                    state.initialized = true;
+                } catch (error) {
+                    state.initialized = false;
+                    console.error('Erro ao carregar o BI cirúrgico:', error);
+                    showErrorMessage('Não foi possível carregar o BI Cirúrgico. Tente novamente em instantes.');
+                    if (typeof showNotification === 'function' && !(error && error.__cirurgicoNotified)) {
+                        showNotification('Não foi possível carregar o BI Cirúrgico.', 'error');
+                    }
+                    throw error;
+                } finally {
+                    toggleLoadingState(false);
+                    endLoadingFeedback(loadingContext);
+                }
             }
 
             function exportData() {
@@ -4163,7 +4241,7 @@
             }
 
             const handleSearchInput = debounce(() => {
-                applyFilters({ ...getCurrentFilters() });
+                applyFilters({ ...getCurrentFilters() }, { reason: 'filters', inlineSpinner: true });
             }, 300);
 
             function bindEvents() {
@@ -4190,7 +4268,7 @@
                     const control = elements[key];
                     if (control) {
                         control.addEventListener('change', () => {
-                            applyFilters({ ...getCurrentFilters() });
+                            applyFilters({ ...getCurrentFilters() }, { reason: 'filters', inlineSpinner: true });
                         });
                     }
                 });
@@ -4230,7 +4308,7 @@
                 const shouldReload = !state.initialized || options.forceReload || options.initialLoad;
                 const activationPromise = shouldReload
                     ? loadInitialData({ forceReload: options.forceReload })
-                    : applyFilters(state.filters);
+                    : applyFilters(state.filters, { reason: 'filters', inlineSpinner: true });
 
                 return Promise.resolve(activationPromise).catch(error => {
                     state.isActive = false;
@@ -4476,6 +4554,111 @@
             performanceInfo: document.getElementById('performanceInfo'),
             chartOverlay: document.getElementById('chartOverlay')
         };
+        const PERFORMANCE_LOADING_MESSAGES = Object.freeze({
+            default: 'Carregando dados da planilha...',
+            filters: 'Atualizando resultados conforme filtros selecionados...',
+            initial: 'Carregando indicadores atualizados...',
+            refresh: 'Atualizando dados diretamente da planilha...',
+            'dataset-change': 'Sincronizando indicadores do BI selecionado...',
+            quick: 'Atualização rápida em andamento...',
+            complete: 'Atualização concluída.'
+        });
+
+        function setPerformanceInfo(element, message, options = {}) {
+            if (!element) {
+                return;
+            }
+
+            const {
+                isLoading = false,
+                icon = 'bolt',
+                iconClass = null,
+                ariaLive = 'polite',
+                loadingLabel = 'Carregando dados'
+            } = options;
+
+            const safeMessage = typeof message === 'string' ? message : String(message ?? '');
+            const resolvedIconClass = iconClass || `fas fa-${icon}`;
+            const spinnerMarkup = '<span class="inline-spinner" role="status" aria-hidden="true"></span>'
+                + `<span class="visually-hidden">${loadingLabel}</span>`;
+            const iconMarkup = `<i class="${resolvedIconClass}" aria-hidden="true"></i>`;
+
+            element.setAttribute('aria-live', ariaLive);
+            element.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+            element.classList.toggle('is-loading', Boolean(isLoading));
+
+            element.innerHTML = `${isLoading ? spinnerMarkup : iconMarkup}<span class="performance-message">${safeMessage}</span>`;
+        }
+
+        function getLoadingFeedbackMessage(reason, { suppressed = false } = {}) {
+            if (suppressed) {
+                return PERFORMANCE_LOADING_MESSAGES.quick;
+            }
+            return PERFORMANCE_LOADING_MESSAGES[reason] || PERFORMANCE_LOADING_MESSAGES.default;
+        }
+
+        function beginLoadingFeedback(options = {}) {
+            const context = {
+                reason: options.reason || 'default',
+                globalOverlay: options.globalOverlay === true,
+                inlineSpinner: options.inlineSpinner !== false,
+                targetElement: options.targetElement || DOMRefs.performanceInfo,
+                message: options.message || null,
+                overlayActive: false,
+                suppressedOverlay: false,
+                inlineSpinnerActive: false
+            };
+
+            if (context.globalOverlay) {
+                const overlayShown = showLoadingState({ respectCooldown: options.respectCooldown !== false });
+                context.overlayActive = overlayShown;
+                if (!overlayShown) {
+                    context.suppressedOverlay = true;
+                }
+            }
+
+            const shouldShowInline = context.inlineSpinner || context.suppressedOverlay || !context.globalOverlay;
+
+            if (shouldShowInline && context.targetElement) {
+                const message = context.message || getLoadingFeedbackMessage(context.reason, {
+                    suppressed: context.suppressedOverlay
+                });
+                context.currentMessage = message;
+                setPerformanceInfo(context.targetElement, message, {
+                    isLoading: true,
+                    loadingLabel: options.loadingLabel || 'Carregando dados'
+                });
+                context.inlineSpinnerActive = true;
+            } else if (context.message && context.targetElement) {
+                setPerformanceInfo(context.targetElement, context.message, {
+                    icon: options.icon || 'bolt'
+                });
+            }
+
+            return context;
+        }
+
+        function endLoadingFeedback(context = {}) {
+            if (context.overlayActive || context.globalOverlay) {
+                hideLoadingState();
+            }
+
+            if (!context.targetElement) {
+                return;
+            }
+
+            context.targetElement.setAttribute('aria-busy', 'false');
+
+            if (!context.inlineSpinnerActive) {
+                return;
+            }
+
+            const spinner = context.targetElement.querySelector('.inline-spinner');
+            if (spinner) {
+                const fallbackMessage = context.currentMessage || PERFORMANCE_LOADING_MESSAGES.complete;
+                setPerformanceInfo(context.targetElement, fallbackMessage, { icon: 'bolt' });
+            }
+        }
         const KPI_VALUE_ELEMENTS = Array.from(document.querySelectorAll('.kpi-value'));
         const chartCanvasMap = Object.freeze({
             especialidadeChart: 'especialidade',
@@ -4578,7 +4761,7 @@
             updateConsultasEspecialidade();
             resetAllCharts();
             const datasetDefinition = getDatasetDefinition(activeDataset);
-            updatePerformanceInfo(`Carregando indicadores do ${datasetDefinition.label}...`);
+            updatePerformanceInfo(`Carregando indicadores do ${datasetDefinition.label}...`, { isLoading: true });
         }
 
         function resetFilterControls() {
@@ -4646,7 +4829,10 @@
                 if (!hasAppsScript) {
                     const datasetDefinition = getDatasetDefinition(activeDataset);
                     updatePerformanceInfo(`Modo demonstração ativo para ${datasetDefinition.label}.`);
-                    await loadDashboardData(activeFilters, 1);
+                    await loadDashboardData(activeFilters, 1, {
+                        reason: 'dataset-change',
+                        globalOverlay: true
+                    });
                     ambulatorialInitialized = true;
                     return;
                 }
@@ -4654,7 +4840,7 @@
                 const shouldReloadFilters = forceReload || !ambulatorialInitialized;
 
                 if (shouldReloadFilters) {
-                    updatePerformanceInfo('Carregando filtros atualizados...');
+                    updatePerformanceInfo('Carregando filtros atualizados...', { isLoading: true });
                     await loadFilterOptions();
                     updatePeriodRangeOptions({ preserveSelection: false });
                     updatePeriodControlsState();
@@ -4663,7 +4849,10 @@
                     updatePeriodControlsState();
                 }
 
-                await loadDashboardData(activeFilters, 1);
+                await loadDashboardData(activeFilters, 1, {
+                    reason: 'dataset-change',
+                    globalOverlay: true
+                });
                 ambulatorialInitialized = true;
             } catch (error) {
                 console.error('Erro ao alternar BI:', error);
@@ -4874,8 +5063,10 @@
         const requestCache = new Map();
         let loadingTimer = null;
         let loadingVisibleSince = 0;
+        let lastGlobalLoadingHiddenAt = -Infinity;
         const LOADING_VISIBILITY_DELAY = 120;
         const MIN_LOADING_VISIBLE = 220;
+        const GLOBAL_LOADING_SUPPRESSION_MS = 1100;
 
         function getDatasetLegendColor(dataset, datasetIndex = 0) {
             const fallbackColor = '#1D4ED8';
@@ -4989,10 +5180,13 @@
             if (!datasetDefinition || datasetDefinition.id !== 'ambulatorial') {
                 return;
             }
-            updatePerformanceInfo(`Preparando indicadores do ${datasetDefinition.label}...`);
+            updatePerformanceInfo(`Preparando indicadores do ${datasetDefinition.label}...`, { isLoading: true });
 
             const executeLoad = () => {
-                loadDashboardData(activeFilters, 1)
+                loadDashboardData(activeFilters, 1, {
+                    reason: 'initial',
+                    globalOverlay: true
+                })
                     .then(() => {
                         ambulatorialInitialized = true;
                     })
@@ -5714,7 +5908,14 @@
             }
         }
 
-        async function loadDashboardData(filters = activeFilters, page = 1) {
+        async function loadDashboardData(filters = activeFilters, page = 1, options = {}) {
+            const loadOptions = {
+                reason: options.reason || 'filters',
+                globalOverlay: options.globalOverlay === true,
+                inlineSpinner: options.inlineSpinner !== false,
+                message: options.message || null
+            };
+
             if (isLoading) {
                 pendingFilters = {
                     filters: {
@@ -5724,7 +5925,8 @@
                             ? [...filters.periodValues]
                             : []
                     },
-                    page
+                    page,
+                    options: { ...loadOptions, ...options }
                 };
                 return;
             }
@@ -5749,116 +5951,97 @@
             const cachedEntry = cacheKey ? requestCache.get(cacheKey) : null;
             const requestStartedAt = getNow();
 
-            updatePerformanceInfo('Carregando dados da planilha...');
-
-            if (!cachedEntry) {
-                showLoadingState();
-            } else {
-                applyDashboardPayload(cachedEntry.result, {
-                    fromCache: true,
-                    defaultMessage: 'Dados carregados instantaneamente (cache) • Atualizando...'
-                });
+            if (cachedEntry) {
+                try {
+                    applyDashboardPayload(cachedEntry.result, {
+                        fromCache: true,
+                        defaultMessage: 'Dados carregados instantaneamente do cache'
+                    });
+                } catch (error) {
+                    console.warn('Falha ao aplicar cache do dashboard:', error);
+                }
             }
 
-            if (!hasAppsScript) {
-                console.warn('Google Apps Script não disponível. Utilizando dados simulados.');
+            const loadingContext = beginLoadingFeedback({
+                ...loadOptions,
+                globalOverlay: loadOptions.globalOverlay && !cachedEntry,
+                message: loadOptions.message || (cachedEntry
+                    ? 'Dados carregados instantaneamente (cache) • Atualizando...'
+                    : null)
+            });
 
-                const fallbackSnapshot = getFallbackDataset(activeDataset);
-                const simulatedResult = {
-                    kpis: cloneData(fallbackSnapshot.kpis || {}),
-                    consultasEspecialidade: cloneData(fallbackSnapshot.consultasEspecialidade || []),
-                    charts: cloneData(fallbackSnapshot.charts || {})
-                };
+            try {
+                if (!hasAppsScript) {
+                    console.warn('Google Apps Script não disponível. Utilizando dados simulados.');
 
-                let applyError = null;
-                try {
+                    const fallbackSnapshot = getFallbackDataset(activeDataset);
+                    const simulatedResult = {
+                        kpis: cloneData(fallbackSnapshot.kpis || {}),
+                        consultasEspecialidade: cloneData(fallbackSnapshot.consultasEspecialidade || []),
+                        charts: cloneData(fallbackSnapshot.charts || {})
+                    };
+
                     applyDashboardPayload(simulatedResult, {
                         defaultMessage: 'Modo demonstração ativo • Dados simulados atualizados'
                     });
-                } catch (error) {
-                    applyError = error;
-                    console.error('Erro ao processar dados simulados:', error);
-                    showError('Não foi possível processar os dados demonstrativos.');
-                } finally {
-                    hideLoadingState();
-                    isLoading = false;
+
+                    return simulatedResult;
                 }
+
+                const result = await new Promise((resolve, reject) => {
+                    google.script.run
+                        .withSuccessHandler(resolve)
+                        .withFailureHandler(reject)
+                        .getDashboardDataPaginated(normalizedFilters, page);
+                });
+
+                const sanitizedResult = result && typeof result === 'object' ? result : {};
+                const duration = Math.max(0, Math.round(getNow() - requestStartedAt));
+                let hasChartInline = false;
+
+                try {
+                    hasChartInline = applyDashboardPayload(sanitizedResult, {
+                        durationMs: duration
+                    });
+                } catch (error) {
+                    console.error('Erro ao processar o retorno da planilha:', error);
+                    showError('Não foi possível atualizar os indicadores.');
+                    updatePerformanceInfo('Não foi possível atualizar os indicadores no momento.', {
+                        icon: 'triangle-exclamation'
+                    });
+                    throw error;
+                }
+
+                if (cacheKey) {
+                    requestCache.set(cacheKey, {
+                        result: cloneResult(sanitizedResult),
+                        timestamp: Date.now()
+                    });
+                    pruneRequestCache();
+                }
+
+                if (!hasChartInline) {
+                    loadChartData(activeFilters).catch(() => {});
+                }
+
+                return result;
+            } catch (error) {
+                console.error('Erro ao carregar dados:', error);
+                showError('Erro ao carregar dados da planilha');
+                updatePerformanceInfo('Não foi possível carregar os dados atuais.', {
+                    icon: 'triangle-exclamation'
+                });
+                throw error;
+            } finally {
+                isLoading = false;
+                endLoadingFeedback(loadingContext);
 
                 if (pendingFilters) {
                     const next = pendingFilters;
                     pendingFilters = null;
-                    queueMicrotask(() => loadDashboardData(next.filters, next.page));
+                    queueMicrotask(() => loadDashboardData(next.filters, next.page, next.options || {}));
                 }
-
-                return applyError
-                    ? Promise.reject(applyError)
-                    : Promise.resolve(simulatedResult);
             }
-
-            return new Promise((resolve, reject) => {
-                google.script.run
-                    .withSuccessHandler(result => {
-                        const sanitizedResult = result && typeof result === 'object' ? result : {};
-                        const duration = Math.max(0, Math.round(getNow() - requestStartedAt));
-                        let hasChartInline = false;
-
-                        try {
-                            hasChartInline = applyDashboardPayload(sanitizedResult, {
-                                durationMs: duration
-                            });
-                        } catch (error) {
-                            console.error('Erro ao processar o retorno da planilha:', error);
-                            showError('Não foi possível atualizar os indicadores.');
-                            hideLoadingState();
-                            isLoading = false;
-
-                            if (pendingFilters) {
-                                const next = pendingFilters;
-                                pendingFilters = null;
-                                queueMicrotask(() => loadDashboardData(next.filters, next.page));
-                            }
-
-                            reject(error);
-                            return;
-                        }
-
-                        hideLoadingState();
-                        isLoading = false;
-
-                        if (cacheKey) {
-                            requestCache.set(cacheKey, {
-                                result: cloneResult(sanitizedResult),
-                                timestamp: Date.now()
-                            });
-                            pruneRequestCache();
-                        }
-
-                        if (!hasChartInline) {
-                            loadChartData(activeFilters).catch(() => {});
-                        }
-
-                        if (pendingFilters) {
-                            const next = pendingFilters;
-                            pendingFilters = null;
-                            queueMicrotask(() => loadDashboardData(next.filters, next.page));
-                        }
-
-                        resolve(result);
-                    })
-                    .withFailureHandler(error => {
-                        console.error('Erro ao carregar dados:', error);
-                        showError('Erro ao carregar dados da planilha');
-                        hideLoadingState();
-                        isLoading = false;
-                        if (pendingFilters) {
-                            const next = pendingFilters;
-                            pendingFilters = null;
-                            queueMicrotask(() => loadDashboardData(next.filters, next.page));
-                        }
-                        reject(error);
-                    })
-                    .getDashboardDataPaginated(normalizedFilters, page);
-            });
         }
 
         function applyDashboardPayload(result, options = {}) {
@@ -6184,9 +6367,15 @@
                 clearTimeout(filterUpdateTimeout);
             }
 
+            updatePerformanceInfo(getLoadingFeedbackMessage('filters'), { isLoading: true });
+
             filterUpdateTimeout = setTimeout(() => {
                 filterUpdateTimeout = null;
-                loadDashboardData(normalizedFilters, page);
+                loadDashboardData(normalizedFilters, page, {
+                    reason: 'filters',
+                    globalOverlay: false,
+                    inlineSpinner: true
+                });
             }, FILTER_DEBOUNCE_MS);
         }
 
@@ -6206,7 +6395,10 @@
                 return;
             }
 
-            loadDashboardData(activeFilters, 1)
+            loadDashboardData(activeFilters, 1, {
+                reason: 'refresh',
+                globalOverlay: true
+            })
                 .then(() => showNotification('Dados atualizados com sucesso!', 'success'))
                 .catch(() => showError('Não foi possível atualizar os dados'));
         }
@@ -7952,28 +8144,47 @@
             });
         }
 
-        function showLoadingState() {
+        function showLoadingState(options = {}) {
             const loader = document.getElementById('globalLoading');
-            if (!loader) return;
+            if (!loader) {
+                return false;
+            }
+
+            const respectCooldown = options.respectCooldown !== false;
+            const now = getNow();
 
             if (loadingTimer) {
                 clearTimeout(loadingTimer);
+                loadingTimer = null;
+            }
+
+            if (!loader.classList.contains('visible') && respectCooldown) {
+                const sinceHidden = now - (lastGlobalLoadingHiddenAt || 0);
+                if (sinceHidden > 0 && sinceHidden < GLOBAL_LOADING_SUPPRESSION_MS) {
+                    return false;
+                }
             }
 
             if (loader.classList.contains('visible')) {
-                loadingVisibleSince = getNow();
-                return;
+                loader.setAttribute('aria-hidden', 'false');
+                loadingVisibleSince = now;
+                return true;
             }
 
             loadingTimer = setTimeout(() => {
                 loader.classList.add('visible');
+                loader.setAttribute('aria-hidden', 'false');
                 loadingVisibleSince = getNow();
             }, LOADING_VISIBILITY_DELAY);
+
+            return true;
         }
 
         function hideLoadingState() {
             const loader = document.getElementById('globalLoading');
-            if (!loader) return;
+            if (!loader) {
+                return;
+            }
 
             if (loadingTimer) {
                 clearTimeout(loadingTimer);
@@ -7982,6 +8193,8 @@
 
             if (!loader.classList.contains('visible')) {
                 loadingVisibleSince = 0;
+                lastGlobalLoadingHiddenAt = getNow();
+                loader.setAttribute('aria-hidden', 'true');
                 return;
             }
 
@@ -7991,7 +8204,9 @@
 
             setTimeout(() => {
                 loader.classList.remove('visible');
+                loader.setAttribute('aria-hidden', 'true');
                 loadingVisibleSince = 0;
+                lastGlobalLoadingHiddenAt = getNow();
             }, remaining);
         }
 
@@ -8019,9 +8234,9 @@
             showNotification(message, 'error');
         }
 
-        function updatePerformanceInfo(message) {
+        function updatePerformanceInfo(message, options = {}) {
             if (DOMRefs.performanceInfo) {
-                DOMRefs.performanceInfo.innerHTML = `<i class="fas fa-bolt"></i> ${message}`;
+                setPerformanceInfo(DOMRefs.performanceInfo, message, { icon: 'bolt', ...options });
             }
         }
 
